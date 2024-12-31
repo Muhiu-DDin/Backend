@@ -70,7 +70,7 @@ userSchema.methods.isPasswordCorrect = async function(password){
 userSchema.methods.generateAccessToken = async function (){
 
     // The decodedToken will be an object containing the payload data (that we are passing below)
-    
+
    return jwt.sign(
         {
             _id:this._id,
@@ -103,4 +103,4 @@ export const User = mongoose.models.User || mongoose.model('User',userSchema )
 // The jsonwebtoken package helps with:
 // Creating tokens: When you log in, it creates a token that contains your user information (like your ID) and a secret key that only the server knows. This token is sent to the client (usually the browser).
 // Verifying tokens: When the client sends the token back to the server (in future requests), jsonwebtoken checks if the token is valid and hasn’t been tampered with, using the secret key.
-// In simple terms, it helps create and check tokens to keep users authenticated while interacting with an app.
+// In simple terms, it helps create and check tokens to keep users authenticated while interacting with an app
