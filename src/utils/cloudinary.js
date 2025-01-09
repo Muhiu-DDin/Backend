@@ -29,5 +29,31 @@ cloudinary.config({
       return null;
     }
   };
+
+  const deleteOnCloudinary = async (publicId, resourceType = 'image') => {
+    try {
+      const result = await cloudinary.v2.uploader.destroy(publicId, {
+        resource_type: resourceType,
+      });
+      console.log("Cloudinary Delete Success:", result);
+      return result;
+    } catch (error) {
+      console.error("Cloudinary Delete Error:", error);
+      return null;
+    }
+  };
+  export const deleteOnCloudinary = async (publicId, resourceType = 'image') => {
+    try {
+      const result = await cloudinary.v2.uploader.destroy(publicId, {
+        resource_type: resourceType,
+      });
+      console.log("Cloudinary Delete Success:", result);
+      return result;
+    } catch (error) {
+      console.error("Cloudinary Delete Error:", error);
+      return null;
+    }
+  };
+    
   
 export default uploadOnCloudinary;

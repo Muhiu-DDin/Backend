@@ -3,6 +3,7 @@ import {ApiError} from "../utils/apiError.js"
 import {User} from "../models/userModel.js"
 import uploadOnCloudinary from "../utils/cloudinary.js"
 import {ApiRes} from "../utils/res.js"
+import mongoose from "mongoose"
 
 export const registerUser = asyncHandler(async (req , res , next)=>{  
 
@@ -100,56 +101,50 @@ const generateRefreshAndAccessToken = async (uid)=>{
     }
 }
 
-export const loginUser = asyncHandler(async (req , res)=>{
+export const loginUser = asyncHandler(async (req, res) => {
 
-    const {email , password , userName} = req.body
+    const { email, password, userName } = req.body;
+    console.log("Request Body:", req.body);
 
-    if(!(email || userName)){
-        throw new ApiError(402 , "email is required")
-    }
-    
-    // User.findOne({
-    //     $or : [{ email } ,{ userName }]
-    // })
-
-    // at this user refrence , user dont have tokens
-
-   const user =  await User.findOne({email})
-
-   if(!user){
-    throw new ApiError(402 , "user not found")
-   }
-
-    const userPass = user.isPasswordCorrect(password)
-
-    if(!userPass){
-        throw new ApiError(403 , "incorrect password")
+    if (!userName && !email) {
+        throw new ApiError(402, "email or username is required");
     }
 
-    const {refreshToken , accessToken} = await generateRefreshAndAccessToken(user._id)
+    // Find user by email or username
+    const user = await User.findOne({ $or: [{ email }, { userName }] });
 
-    // At this reference of user , it has tokens
+    if (!user) {
+        throw new ApiError(402, "user not found");
+    }
 
-    const loginUser = await User.findById(user._id).select(
-        "-password -refreshToken"
-    )
+    const userPass = await user.isPasswordCorrect(password);
+
+    if (!userPass) {
+        throw new ApiError(403, "incorrect password");
+    }
+
+    const { refreshToken, accessToken } = await generateRefreshAndAccessToken(user._id);
+
+    const loginUser = await User.findById(user._id).select("-password -refreshToken");
 
     const options = {
-        httpOnly : true , 
-        secure : true
-    }
+        httpOnly: true,
+        secure: true,
+    };
 
-    // these token is send to user as encoded tokens and can be decoded using jwt.verify or other methods 
+    return res
+        .status(200)
+        .cookie("refreshToken", refreshToken, options)
+        .cookie("accessToken", accessToken, options)
+        .json(
+            new ApiRes(200, "successfully login", {
+                user: loginUser,
+                refreshToken,
+                accessToken,
+            })
+        );
+});
 
-    return res.status(200).
-    cookie("refreshToken" , refreshToken , options ).
-    cookie("accessToken" , accessToken , options ).
-    json(
-        new ApiRes(200 , "successfully login" , {
-            user : loginUser , refreshToken , accessToken
-        })
-    )
-})
 
 // logoutUser controller would called after the execution of middleware jwtVerify , that why in this controller we have the access of req.user 
 
@@ -186,7 +181,7 @@ export const refreshaccesstoken = asyncHandler(
 
     async(res , req)=>{
         try{
-               // this encoded refresh token is send by user as accessToken had been expired
+        // this encoded refresh token is send by user as accessToken had been expired
 
         const SndByUser = req.cookies.refreshToken || req.body.refreshToken
         const decodedToken = jwt.verify(SndByUser , env.process.REFRESH_TOKEN_SECRET)
@@ -196,7 +191,7 @@ export const refreshaccesstoken = asyncHandler(
         if(!user){
             throw new ApiError(405 , "invalid refresh token")
         }
-        // is ensuring that the refresh token being sent by the user is the same as the one stored in the database , his can prevent cases where someone might attempt to send an old or manipulated refresh token to get a new access token.
+        // is ensuring that the refresh token being sent by the user is the same as the one stored in the database , this can prevent cases where someone might attempt to send an old or manipulated refresh token to get a new access token.
 
         if(user.refreshToken !== SndByUser){
             throw new ApiError(402 , "refresh token had been used or expire")
@@ -225,16 +220,20 @@ export const refreshaccesstoken = asyncHandler(
 
 export const changeUserPassword = asyncHandler(
 
-    // for changing password , user must login , so this verfication is done by middleware jwtVerify , because when user is login only then it have tokens  
+// for changing password , user must login , so this verfication is done by middleware jwtVerify , because when user is login only then it have tokens  
 
     async(req , res)=>{
         try{
             const {password , newPassword} = req.body
 
+            console.log("request body of changePass=>" , req.body)
+
             const uid = req.user?._id
-            user = await User.findById(uid)
+           const user = await User.findById(uid)
+
+       
             
-           const isValid =  user.isPasswordCorrect(password)
+           const isValid =  await user.isPasswordCorrect(password)
 
            if(!isValid){
             throw new ApiError(403 , "password is in correct")
@@ -272,6 +271,8 @@ export const updateUserFields = asyncHandler(
     async(req , res)=>{
 
         const {userName , fullName} = req.body
+
+        console.log("update Field'body =>" , req.body)
 
         if(!(userName || fullName)){
             throw new ApiError(402 , "userName or fullName is required")
@@ -373,5 +374,231 @@ export const updateCover = asyncHandler(
         new ApiRes(202 , "cover updated Successfully" , user )
       )
 
+    }
+)
+
+export const getUserProfile = asyncHandler(
+    async(req , res)=>{
+
+        // we needs to fetch profiles of other users too, req.params.userName is necessary.req.user.userName refers to the authenticated user's username 
+        // which is typically used for actions where the user is interacting with their own data
+        // If the goal is to fetch the profile of another user, req.user.userName wouldn't work because it doesn't let you specify another user's profile.
+
+        
+        const {userName}= req.params
+
+        if(!userName){
+            throw new ApiError("Invalid User")
+        }
+        console.log("username =>" , userName)
+
+        // channel return an array in which there would be that particular user that is being matched
+
+        const channel =   await User.aggregate([
+            {
+                $match : {
+                    userName : userName
+                } 
+            },
+                // when the match find that document it will pass to the next pipline in this case its lookUp
+
+                // To fetch all subscriptions where the current user's _id appears as the channel
+
+                // A subscriber: The user who is following another user (the "follower").
+                // A channel: The user being followed (the "followed user").
+
+                // eg : ali (User 2) subscribes to umar (User 1)
+                // subscriber: This will be User 2's _id (2).
+                // channel: This will be User 1's _id (1).
+
+                // The Subscription model represents a relationship between two users:
+                // A subscriber who follows another user.
+                // A channel which is the user being followed.
+            {
+                $lookup:{
+                    from:"Subscription",
+                    localField:"_id",
+                    foreignField:"channel",
+                    as:"subscribers"
+                } 
+            },
+            {
+                $lookup:{
+                    from:"Subscription",
+                    localField:"_id",
+                    foreignField:"subscriber",
+                    as:"subscribedTo"
+                }
+            },
+                // these 3 fields will be added to the search user (user pass through params)
+            {
+                $addFields : {
+
+                    subsCount : {
+                        $size : "$subscribers"
+                    } , 
+
+                    subsToCount : {
+                        $size : "$subscribedTo"
+                    } , 
+                
+                // we have to find wheather the array of subscribers that have got from lookup have this particular user exsit or not 
+
+                // $in expects two arguments:
+                // The value to check: This is the value you want to check for existence within an array.
+                // The array to search in: This is the array where the operator will look for the value.
+
+                    isSubscribes : {
+                        $cond : {
+                            if : {$in : [req.user?._id , "$subscribers.subscriber"]},
+                            then : true,
+                            else : false 
+                        }
+                    }
+                } 
+            } , 
+            {
+                $project : {
+                    userName:1 ,
+                    fullName:1,
+                    email:1,
+                    avtar:1,
+                    coverImage:1,
+                    subsCount:1,
+                    subsToCount:1,
+                    isSubscribes:1,
+                    subscribers:1,
+                    subscribedTo:1
+
+                }   
+            }
+        ]
+    )
+    
+    if(!channel.length){
+        throw new ApiError(402 , "channel does not exist")
+    }
+
+    return res.status(200).json(
+        new ApiRes(200 , "channel fetched successfully" ,  channel[0])
+    )
+}
+)
+
+// Why Explicit Type Conversion of _id is Required in below function : 
+// In functions like findById or findByIdAndUpdate, Mongoose automatically converts string values to ObjectId behind the scenes if the _id field is expected to be an ObjectId
+
+// Explicit conversion to mongoose.Types.ObjectId is necessary when:
+// 1) Using raw MongoDB aggregation queries (User.aggregate()).
+// 2) Comparing _id values or other fields stored as ObjectId in the database.
+
+// Mongoose does not automatically cast types in aggregation pipelines, unlike when using methods like find, findById, or findOneAndUpdate.
+
+// This is because aggregation pipelines are lower-level and provide a more direct interface to MongoDB's aggregation functionality.
+
+// The localField is "watchHistory", which is an array of ObjectIds in the User document.
+// The foreignField is the _id field in the Video collection.
+// The $lookup performs a join operation to match each ObjectId in the watchHistory array with the _id in the Video collection.
+// For every ObjectId in the watchHistory, MongoDB looks up the corresponding Video document and places it into the new array field WacthedHistory.
+
+// eg:
+// {
+//     "_id": "userId123",
+//     "userName": "john_doe",
+
+//     "watchHistory": [
+//       "videoId1",
+//       "videoId2",
+//       "videoId3"
+//     ],
+//     "WacthedHistory": [
+//       {
+//         "_id": "videoId1",
+//         "title": "Amazing Nature",
+//         "duration": 120,
+//         "views": 5000,
+//             "owner" : {
+
+//             }
+//       },
+//       {
+//         "_id": "videoId2",
+//         "title": "Tech Trends 2025",
+//         "duration": 180,
+//         "views": 3000,
+//             "owner" : {
+
+//             }
+//       },
+//       {
+//         "_id": "videoId3",
+//         "title": "Cooking 101",
+//         "duration": 90,
+//         "views": 8000,
+//             "owner" : {
+
+//             }
+//       }
+//     ]
+//   }
+
+   
+
+export const getUserWatchHistory = asyncHandler(
+    async(req , res)=>{
+        // aggregate returns array , in this case it is an array of a particular user means array have only one object of user 
+       const user = await User.aggregate([
+            {
+                $match : {
+                    _id : new mongoose.Types.ObjectId(req.user?._id)
+                }
+            }, 
+            {
+                $lookup : {
+                    // control Switches to the Video collection from user collection 
+                    from : "Video",
+                    localField : "watchHistory",
+                    foreignField : "_id",
+                    as : "WatchedHistory",
+                    pipeline : [
+                        {
+                            $lookup : {
+                    // control Switches to the USER collection from VIDEOS collection 
+                                from : "User",
+                                localField : "owner",
+                                foreignField : "_id",
+                                as : "owner" , 
+                                pipeline : [
+                                    // Further processing in User context
+                                    {
+                                        $project : {
+                                            userName:1 ,
+                                            fullName:1,
+                                            avtar:1
+                                        }
+                                    }
+                                ]
+
+                            }
+                        } , 
+
+                        {
+                            $addFields : {
+                                owner : {
+                                    $first : "$owner"
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ])
+
+//The aggregate method returns an array of documents, even if only one document is returned.
+// In your case, since you're matching a single user by their _id, MongoDB will return an array with one element: the matched user document. Hence, user[0] refers to the first (and only) document in that array.
+
+        return res.status(200).json(
+            new ApiRes(202 , "user watched history" , user[0].WatchedHistory)
+        )
     }
 )

@@ -15,7 +15,7 @@ const videoSchema = new mongoose.Schema(
             type : String , 
             required : true
         },
-        discription : {
+        description : {
             type : String , 
             required : true
         },
@@ -40,6 +40,8 @@ const videoSchema = new mongoose.Schema(
 )
 
 videoSchema.plugin(mongooseAggregatePaginate)
+
+videoSchema.index({title : "text" , description : "text"} , {name : "search-videos"})
 
 
 
