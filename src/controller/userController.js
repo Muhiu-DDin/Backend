@@ -5,7 +5,7 @@ import uploadOnCloudinary from "../utils/cloudinary.js"
 import {ApiRes} from "../utils/res.js"
 import mongoose from "mongoose"
 
-export const registerUser = asyncHandler(async (req , res , next)=>{  
+export const registerUser = asyncHandler(async (req , res)=>{  
 
 // get user details from frontend
 // validation – not empty
@@ -146,7 +146,7 @@ export const loginUser = asyncHandler(async (req, res) => {
 });
 
 
-// logoutUser controller would called after the execution of middleware jwtVerify , that why in this controller we have the access of req.user 
+// logoutUser controller will call after the execution of middleware jwtVerify , that why in this controller we have the access of req.user 
 
 export const logoutUser = asyncHandler (async(req , res)=>{
 
